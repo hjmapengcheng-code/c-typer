@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C-Typer Ultimate - C语言海量题库版</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #1e1e1e;
+            --panel: #252526;
+            --text: #d4d4d4;
+            --keyword: #c586c0; /* VSCode 风格 */
+            --type: #4ec9b0;
+            --string: #ce9178;
+            --comment: #6a9955;
+            --number: #b5cea8;
+            --cursor: #3794ff;
+            --error: #f44747;
+            --border: #3e3e42;
+        }
+
+        body {
+            font-family: 'Consolas', 'Menlo', monospace;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* === 顶部导航 (修复点击问题) === */
+        .header {
+            width: 100%;
+            background: #2d2d2d;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-sizing: border-box;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            z-index: 1000; /* 确保在最上层 */
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .brand { font-size: 1.4rem; font-weight: bold; color: white; display:flex; align-items:center; gap:10px; }
+        
+        /* 优化的下拉菜单 */
+        .controls select {
+            background: #3c3c3c;
+            color: white;
+            border: 1px solid #555;
+            padding: 10px 15px;
+            border-radius: 6px;
+            outline: none;
+            font-size: 14px;
+            cursor: pointer;
+            min-width: 250px; /* 宽一点更好点 */
+        }
+        .controls select:hover { background: #444; border-color: var(--cursor); }
+
+        /* === 实时状态栏 === */
+        .stats-bar {
+            display: flex;
+            gap: 30px;
+            margin: 20px 0;
+            font-size: 1.1rem;
+            background: var(--panel);
+            padding: 12px 30px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .stat span { font-weight: bold; color: var(--cursor); font-family: monospace; font-size: 1.3em;}
+        .stat.err span { color: var(--error); }
+
+        /* === 核心代码编辑器 === */
+        .editor-container {
+            position: relative;
+            width: 85%;
+            max-width: 1100px;
+            height: 50vh; /* 占据一半屏幕高度 */
+            min-height: 350px;
+            background: #1e1e1e;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 20px;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        .editor-header {
+            background: #2d2d2d;
+            padding: 8px 15px;
+            font-size: 0.8rem;
+            color: #888;
+            display: flex;
+            gap: 10px;
+            border-bottom: 1px solid var(--border);
+            align-items: center;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-box {
+            padding: 20px 30px;
+            font-size: 19px; /* 字大一点 */
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            flex-grow: 1;
+            cursor: text;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+
+        /* 字符样式 */
+        .char { opacity: 0.4; transition: opacity 0.1s; }
+        .char.typed { opacity: 1; color: var(--text); }
+        .char.current { 
+            background-color: var(--cursor); 
+            color: white !important;
+            border-radius: 2px;
+            opacity: 1;
+            animation: pulse 1s infinite;
+        }
+        .char.error-shake {
+            animation: shake 0.3s;
+            background-color: var(--error);
+            color: white !important;
+        }
+        
+        /* 简单的语法高亮颜色 (输入后生效) */
+        .char.typed.hl-kw { color: var(--keyword); font-weight: bold; }
+        .char.typed.hl-type { color: var(--type); }
+        .char.typed.hl-str { color: var(--string); }
+        .char.typed.hl-num { color: var(--number); }
+        .char.typed.hl-com { color: var(--comment); }
+
+        /* === 底部长期数据仪表盘 === */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            width: 85%;
+            max-width: 1100px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        .card-title { font-size: 0.85rem; color: #888; margin-bottom: 5px; }
+        .card-value { font-size: 1.4rem; font-weight: bold; color: white; }
+        .card-unit { font-size: 0.7rem; color: #666; }
+
+        .btn-reset {
+            background: transparent;
+            color: #555;
+            border: 1px solid #333;
+            padding: 5px 15px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-bottom: 40px;
+            border-radius: 4px;
+        }
+        .btn-reset:hover { color: var(--error); border-color: var(--error); }
+
+        /* 结算遮罩 */
+        .overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(30, 30, 30, 0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            text-align: center;
+        }
+        .overlay h2 { color: var(--type); margin-bottom: 10px; font-size: 2rem;}
+        .overlay p { margin-bottom: 20px; color: #aaa; }
+        .btn-next {
+            background: var(--cursor); color: white; border: none;
+            padding: 12px 35px; font-size: 1.2rem; cursor: pointer; border-radius: 6px;
+            transition: 0.2s;
+        }
+        .btn-next:hover { background: #2b7cdd; transform: scale(1.05); }
+
+        /* 动画 */
+        @keyframes pulse { 50% { opacity: 0.7; } }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+
+        /* 滚动条美化 */
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="brand">
+        <i class="fab fa-cuttlefish" style="color: #3794ff;"></i> 
+        <span>C-Typer</span>
+    </div>
+    <div class="controls">
+        <select id="levelSelect" onchange="changeLevel()">
+            <!-- JS 动态填充海量题库 -->
+        </select>
+    </div>
+</div>
+
+<div class="stats-bar">
+    <div class="stat">进度 <span id="progress">0/0</span></div>
+    <div class="stat">错误 <span id="errors">0</span></div>
+    <div class="stat">速度 <span id="wpm">0</span> CPM</div>
+    <div class="stat">准确率 <span id="acc">100%</span></div>
+</div>
+
+<div class="editor-container" onclick="focusInput()">
+    <div class="editor-header">
+        <span class="dot" style="background:#ff5f56"></span>
+        <span class="dot" style="background:#ffbd2e"></span>
+        <span class="dot" style="background:#27c93f"></span>
+        <span id="filename" style="margin-left:10px; font-family:sans-serif;">main.c</span>
+    </div>
+    <div class="code-box" id="codeBox"></div>
+    
+    <div class="overlay" id="finishOverlay">
+        <h2><i class="fas fa-check-circle"></i> 编译通过</h2>
+        <p id="finishMsg">恭喜完成本次练习！</p>
+        <button class="btn-next" onclick="nextLevel()">下一题 (Next)</button>
+    </div>
+</div>
+
+<div class="dashboard">
+    <div class="card">
+        <div class="card-title">累计敲击 (Total)</div>
+        <div class="card-value" id="statTotalKeys">0</div>
+        <div class="card-unit">keystrokes</div>
+    </div>
+    <div class="card">
+        <div class="card-title">今日练习 (Today)</div>
+        <div class="card-value" id="statTodayTime">0</div>
+        <div class="card-unit">minutes</div>
+    </div>
+    <div class="card">
+        <div class="card-title">总时长 (Total Time)</div>
+        <div class="card-value" id="statTotalTime">0</div>
+        <div class="card-unit">hours</div>
+    </div>
+    <div class="card">
+        <div class="card-title">累计打卡 (Days)</div>
+        <div class="card-value" id="statTotalDays">1</div>
+        <div class="card-unit">days</div>
+    </div>
+    <div class="card">
+        <div class="card-title">连胜 (Streak)</div>
+        <div class="card-value" id="statStreak">1</div>
+        <div class="card-unit">days</div>
+    </div>
+</div>
+
+<button class="btn-reset" onclick="hardReset()">清除所有数据</button>
+
+<!-- 隐形输入框移到底部，防止遮挡 -->
+<input type="text" id="hiddenInput" style="opacity:0; position:fixed; bottom:0; left:0; height:1px; width:1px; pointer-events:none;">
+
+<script>
+    // ==========================================
+    // 1. 海量 C 语言题库 (Categories)
+    // ==========================================
+    const questionBank = [
+        {
+            category: "基础语法 (Basics)",
+            items: [
+                { title: "Hello World", code: `#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}` },
+                { title: "整数相加", code: `#include <stdio.h>\n\nint main() {\n    int a = 5, b = 10;\n    int sum = a + b;\n    printf("Sum: %d", sum);\n    return 0;\n}` },
+                { title: "输入输出 (Scanf)", code: `#include <stdio.h>\n\nint main() {\n    int num;\n    printf("Enter number: ");\n    scanf("%d", &num);\n    printf("You entered: %d", num);\n    return 0;\n}` },
+                { title: "判断奇偶 (If-Else)", code: `if (num % 2 == 0) {\n    printf("Even");\n} else {\n    printf("Odd");\n}` },
+                { title: "Switch Case", code: `switch (day) {\n    case 1: printf("Monday"); break;\n    case 2: printf("Tuesday"); break;\n    default: printf("Other");\n}` }
+            ]
+        },
+        {
+            category: "循环结构 (Loops)",
+            items: [
+                { title: "For 循环打印", code: `for (int i = 1; i <= 10; i++) {\n    printf("%d ", i);\n}` },
+                { title: "While 循环", code: `int i = 0;\nwhile (i < 5) {\n    printf("%d\\n", i);\n    i++;\n}` },
+                { title: "Do-While", code: `do {\n    printf("Running...");\n} while (condition);` },
+                { title: "九九乘法表", code: `for(int i=1; i<=9; i++) {\n    for(int j=1; j<=i; j++) {\n        printf("%d*%d=%d ", j, i, i*j);\n    }\n    printf("\\n");\n}` }
+            ]
+        },
+        {
+            category: "数组与函数 (Arrays & Func)",
+            items: [
+                { title: "定义函数", code: `int add(int a, int b) {\n    return a + b;\n}\n\nint main() {\n    int result = add(5, 3);\n}` },
+                { title: "遍历数组", code: `int arr[] = {1, 2, 3, 4, 5};\nint size = 5;\nfor(int i=0; i<size; i++) {\n    printf("%d ", arr[i]);\n}` },
+                { title: "查找最大值", code: `int max = arr[0];\nfor(int i=1; i<n; i++) {\n    if(arr[i] > max) max = arr[i];\n}` },
+                { title: "二维数组", code: `int grid[2][3] = {\n    {1, 2, 3},\n    {4, 5, 6}\n};` }
+            ]
+        },
+        {
+            category: "指针与内存 (Pointers)",
+            items: [
+                { title: "指针基础", code: `int x = 10;\nint *ptr = &x;\nprintf("Value: %d", *ptr);` },
+                { title: "指针交换变量", code: `void swap(int *a, int *b) {\n    int temp = *a;\n    *a = *b;\n    *b = temp;\n}` },
+                { title: "指针遍历数组", code: `int *p = arr;\nwhile(p < arr + 5) {\n    printf("%d ", *p);\n    p++;\n}` },
+                { title: "字符串长度 (strlen)", code: `int len = 0;\nchar *s = "Hello";\nwhile(*s != '\\0') {\n    len++;\n    s++;\n}` }
+            ]
+        },
+        {
+            category: "经典算法 (Algorithms)",
+            items: [
+                { title: "冒泡排序 (Bubble Sort)", code: `void bubbleSort(int arr[], int n) {\n    for(int i=0; i<n-1; i++) {\n        for(int j=0; j<n-i-1; j++) {\n            if(arr[j] > arr[j+1])\n                swap(&arr[j], &arr[j+1]);\n        }\n    }\n}` },
+                { title: "二分查找 (Binary Search)", code: `int binarySearch(int arr[], int l, int r, int x) {\n    while (l <= r) {\n        int m = l + (r - l) / 2;\n        if (arr[m] == x) return m;\n        if (arr[m] < x) l = m + 1;\n        else r = m - 1;\n    }\n    return -1;\n}` },
+                { title: "斐波那契 (递归)", code: `int fib(int n) {\n    if (n <= 1) return n;\n    return fib(n-1) + fib(n-2);\n}` },
+                { title: "阶乘 (Factorial)", code: `long long factorial(int n) {\n    if (n == 0) return 1;\n    return n * factorial(n - 1);\n}` }
+            ]
+        },
+        {
+            category: "结构体 (Structs)",
+            items: [
+                { title: "定义结构体", code: `struct Student {\n    char name[50];\n    int age;\n    float score;\n};` },
+                { title: "结构体指针", code: `struct Point p1 = {10, 20};\nstruct Point *ptr = &p1;\nprintf("X: %d", ptr->x);` }
+            ]
+        }
+    ];
+
+    // ==========================================
+    // 2. 核心变量
+    // ==========================================
+    let currentLevel = { code: "" };
+    let currentIndex = 0;
+    let errorCount = 0;
+    let keyCount = 0;
+    let startTime = null;
+    let timerRunning = false;
+    let timeInterval = null;
+    
+    // 平铺后的关卡列表，方便上一关下一关
+    let flatLevelList = [];
+
+    // ==========================================
+    // 3. 数据持久化 (LocalStorage)
+    // ==========================================
+    let userStats = {
+        totalKeys: 0,
+        todayKeys: 0,
+        todayTimeSecs: 0,
+        totalTimeSecs: 0,
+        totalDays: 1,
+        streak: 1,
+        lastDate: new Date().toDateString()
+    };
+
+    function loadStats() {
+        const saved = localStorage.getItem('cTyperStats_Final');
+        if (saved) userStats = JSON.parse(saved);
+        
+        const todayStr = new Date().toDateString();
+        if (userStats.lastDate !== todayStr) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            if (userStats.lastDate === yesterday.toDateString()) {
+                userStats.streak++;
+            } else {
+                userStats.streak = 1;
+            }
+            userStats.todayKeys = 0;
+            userStats.todayTimeSecs = 0;
+            userStats.totalDays++;
+            userStats.lastDate = todayStr;
+        }
+        renderDashboard();
+    }
+
+    function saveStats() {
+        localStorage.setItem('cTyperStats_Final', JSON.stringify(userStats));
+        renderDashboard();
+    }
+
+    function renderDashboard() {
+        document.getElementById('statTotalKeys').innerText = userStats.totalKeys;
+        document.getElementById('statTodayTime').innerText = Math.ceil(userStats.todayTimeSecs / 60);
+        document.getElementById('statTotalTime').innerText = (userStats.totalTimeSecs / 3600).toFixed(1);
+        document.getElementById('statTotalDays').innerText = userStats.totalDays;
+        document.getElementById('statStreak').innerText = userStats.streak;
+    }
+
+    function hardReset() {
+        if(confirm("确定要删除所有进度吗？")) {
+            localStorage.removeItem('cTyperStats_Final');
+            location.reload();
+        }
+    }
+
+    // ==========================================
+    // 4. 初始化与渲染
+    // ==========================================
+    function init() {
+        loadStats();
+        initLevelSelect();
+        
+        // 全局计时器
+        timeInterval = setInterval(() => {
+            if (timerRunning) {
+                userStats.todayTimeSecs++;
+                userStats.totalTimeSecs++;
+                if (userStats.totalTimeSecs % 5 === 0) saveStats();
+                if (userStats.totalTimeSecs % 60 === 0) renderDashboard();
+            }
+        }, 1000);
+
+        // 绑定按键
+        document.addEventListener('keydown', handleKeydown);
+        // 点击任意处聚焦
+        document.addEventListener('click', (e) => {
+            // 如果点击的不是select或button，则聚焦隐藏输入框
+            if(e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
+                document.getElementById('hiddenInput').focus();
+            }
+        });
+        
+        // 加载第一关
+        changeLevel();
+    }
+
+    function initLevelSelect() {
+        const select = document.getElementById('levelSelect');
+        select.innerHTML = "";
+        flatLevelList = [];
+        let globalIdx = 0;
+
+        questionBank.forEach(cat => {
+            const group = document.createElement('optgroup');
+            group.label = cat.category;
+            
+            cat.items.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = globalIdx;
+                opt.text = item.title;
+                group.appendChild(opt);
+                
+                flatLevelList.push(item);
+                globalIdx++;
+            });
+            
+            select.appendChild(group);
+        });
+    }
+
+    function changeLevel() {
+        const idx = document.getElementById('levelSelect').value;
+        loadLevel(idx);
+        // 确保 UI 焦点回到输入
+        document.getElementById('hiddenInput').focus();
+    }
+
+    function loadLevel(idx) {
+        currentLevel = flatLevelList[idx];
+        document.getElementById('levelSelect').value = idx; // 同步下拉框
+        document.getElementById('filename').innerText = currentLevel.title + ".c";
+        resetGame();
+    }
+
+    function resetGame() {
+        currentIndex = 0;
+        errorCount = 0;
+        keyCount = 0;
+        timerRunning = false;
+        startTime = null;
+        document.getElementById('finishOverlay').style.display = 'none';
+        
+        renderCodeBox();
+        updateRealtimeStats();
+    }
+
+    function renderCodeBox() {
+        const box = document.getElementById('codeBox');
+        box.innerHTML = "";
+        const code = currentLevel.code;
+
+        for (let i = 0; i < code.length; i++) {
+            const span = document.createElement('span');
+            span.innerText = code[i] === '\n' ? '↵\n' : code[i];
+            span.className = 'char';
+            span.id = `char-${i}`;
+            box.appendChild(span);
+        }
+        updateCursor();
+    }
+
+    // ==========================================
+    // 5. 核心打字逻辑 (Stop-on-Error)
+    // ==========================================
+    function handleKeydown(e) {
+        if (document.getElementById('finishOverlay').style.display === 'flex') {
+            if(e.key === 'Enter') nextLevel();
+            return;
+        }
+        
+        // 忽略功能键 (除了 Enter/Tab)
+        if (e.key.length > 1 && e.key !== 'Enter' && e.key !== 'Tab') return;
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        
+        e.preventDefault();
+
+        if (!timerRunning) {
+            timerRunning = true;
+            startTime = new Date();
+        }
+
+        const target = currentLevel.code[currentIndex];
+        let input = e.key;
+        if (input === 'Enter') input = '\n';
+
+        // 智能 Tab 支持
+        if (input === 'Tab') {
+            // 如果代码里当前位置是空格，尝试自动填充缩进
+            if (target === ' ') {
+                let spaceCount = 0;
+                while(currentLevel.code[currentIndex + spaceCount] === ' ') {
+                    spaceCount++;
+                }
+                // 如果空格多于1个，算作缩进
+                if (spaceCount > 1) {
+                    completeChars(spaceCount);
+                    return;
+                }
+            }
+        }
+
+        if (input === target) {
+            completeChars(1);
+        } else {
+            errorCount++;
+            triggerShake();
+        }
+        updateRealtimeStats();
+    }
+
+    function completeChars(count) {
+        for(let k=0; k<count; k++) {
+            const el = document.getElementById(`char-${currentIndex}`);
+            el.classList.add('typed');
+            
+            // 简单的高亮染色 (Keywords)
+            const typedText = currentLevel.code.substring(0, currentIndex + 1);
+            // 这里就不做复杂高亮了，保持性能
+            
+            currentIndex++;
+            keyCount++;
+            userStats.totalKeys++;
+            userStats.todayKeys++;
+        }
+        saveStats();
+        updateCursor();
+        
+        if (currentIndex >= currentLevel.code.length) {
+            levelComplete();
+        }
+    }
+
+    function updateCursor() {
+        document.querySelectorAll('.current').forEach(el => el.classList.remove('current'));
+        if (currentIndex < currentLevel.code.length) {
+            const el = document.getElementById(`char-${currentIndex}`);
+            el.classList.add('current');
+            
+            // 自动滚动 (关键)
+            const box = document.getElementById('codeBox');
+            const elTop = el.offsetTop;
+            const elBottom = elTop + el.offsetHeight;
+            const boxTop = box.scrollTop;
+            const boxBottom = boxTop + box.offsetHeight;
+
+            if (elBottom > boxBottom - 40) {
+                box.scrollTop = elTop - 40;
+            } else if (elTop < boxTop) {
+                box.scrollTop = elTop - 40;
+            }
+        }
+    }
+
+    function triggerShake() {
+        const el = document.getElementById(`char-${currentIndex}`);
+        el.classList.remove('error-shake');
+        void el.offsetWidth; // 触发重绘
+        el.classList.add('error-shake');
+    }
+
+    function updateRealtimeStats() {
+        document.getElementById('progress').innerText = `${currentIndex}/${currentLevel.code.length}`;
+        document.getElementById('errors').innerText = errorCount;
+        
+        let wpm = 0;
+        if (startTime) {
+            const mins = (new Date() - startTime) / 1000 / 60;
+            if(mins > 0) wpm = Math.round(currentIndex / mins);
+        }
+        document.getElementById('wpm').innerText = wpm;
+        
+        const acc = keyCount + errorCount === 0 ? 100 : Math.round((keyCount / (keyCount + errorCount)) * 100);
+        document.getElementById('acc').innerText = acc + "%";
+    }
+
+    function levelComplete() {
+        timerRunning = false;
+        document.getElementById('finishOverlay').style.display = 'flex';
+        saveStats();
+    }
+
+    function nextLevel() {
+        const select = document.getElementById('levelSelect');
+        if (select.selectedIndex < select.options.length - 1) {
+            select.selectedIndex++;
+            changeLevel();
+        } else {
+            alert("恭喜！你已经刷完了所有题目！是时候去写真正的代码了！");
+            document.getElementById('finishOverlay').style.display = 'none';
+        }
+    }
+    
+    function focusInput() {
+        document.getElementById('hiddenInput').focus();
+    }
+
+    init();
+
+</script>
+</body>
+</html>
